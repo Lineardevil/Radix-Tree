@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Modern Radix-Trie Dictionary</title>
+
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="logo">
+                <i class="fas fa-network-wired"></i> RadixDict
+            </div>
+
+            <div class="control-box">
+                <h3><i class="fas fa-search"></i> Tra từ điển</h3>
+                <div class="input-group">
+                    <input type="text" id="search-word" placeholder="Nhập từ cần tìm (VD: Apple)">
+                    <button class="btn-primary" onclick="handleSearch()"><i class="fas fa-search"></i></button>
+                </div>
+                <div id="search-result" class="result-msg"></div>
+            </div>
+
+            <hr class="divider">
+
+            <div class="control-box">
+                <h3><i class="fas fa-edit"></i> Quản lý mục từ</h3>
+                <input type="text" id="manage-word" placeholder="Từ vựng (VD: Apply)">
+                <input type="text" id="manage-def" placeholder="Nghĩa của từ...">
+                <div class="btn-group">
+                    <button class="btn-success" onclick="handleManage('add')"><i class="fas fa-plus"></i> Thêm</button>
+                    <button class="btn-danger" onclick="handleManage('delete')"><i class="fas fa-trash"></i> Xóa</button>
+                </div>
+                <div id="manage-msg" class="result-msg"></div>
+
+                <div id="delete-options" class="delete-options-container" style="display: none;">
+                    </div>
+            </div>
+
+            <hr class="divider">
+
+            <div class="control-box">
+                <h3><i class="fas fa-cog"></i> Cài đặt hệ thống</h3>
+                <button class="btn-danger" style="width: 100%; background-color: #dc2626;" onclick="handleReset()">
+                    <i class="fas fa-skull-crossbones"></i> Xóa TOÀN BỘ dữ liệu
+                </button>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('tab-list', this)">
+                    <i class="fas fa-list"></i> Danh sách mục từ
+                </button>
+                <button class="tab-btn" onclick="switchTab('tab-tree', this)">
+                    <i class="fas fa-project-diagram"></i> Cây Radix-Trie
+                </button>
+            </div>
+
+            <div class="tab-content-container">
+                <div id="tab-list" class="tab-pane active">
+                    <div class="table-wrapper">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Từ vựng</th>
+                                    <th>Định nghĩa</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dict-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="tab-tree" class="tab-pane">
+                    <div class="zoom-controls">
+                        <button onclick="handleZoom('in')" title="Phóng to">
+                            <svg class="icon-svg" viewBox="0 0 24 24">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                <line x1="11" y1="8" x2="11" y2="14" class="icon-sign"></line>
+                                <line x1="8" y1="11" x2="14" y2="11" class="icon-sign"></line>
+                            </svg>
+                        </button>
+
+                        <button onclick="handleZoom('out')" title="Thu nhỏ">
+                            <svg class="icon-svg" viewBox="0 0 24 24">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                <line x1="8" y1="11" x2="14" y2="11" class="icon-sign"></line>
+                            </svg>
+                        </button>
+
+                        <button onclick="handleZoom('reset')" title="Khôi phục vị trí">
+                            <svg class="icon-svg" viewBox="0 0 24 24">
+                                <polyline points="15 3 21 3 21 9"></polyline>
+                                <polyline points="9 21 3 21 3 15"></polyline>
+                                <polyline points="21 15 21 21 15 21"></polyline>
+                                <polyline points="3 9 3 3 9 3"></polyline>
+                                <line x1="10" y1="14" x2="3" y2="21"></line>
+                                <line x1="14" y1="10" x2="21" y2="3"></line>
+                                <line x1="14" y1="14" x2="21" y2="21"></line>
+                                <line x1="10" y1="10" x2="3" y2="3"></line>
+                            </svg>
+                        </button>
+                    </div>
+
+                    <div id="canvas"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
