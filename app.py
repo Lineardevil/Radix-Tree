@@ -1,9 +1,16 @@
 import sqlite3
-import re  # Regex để kiểm tra chuỗi
+import re
+import os
 from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
-DATABASE = 'dictionary.db'
+
+# Cấu hình đường dẫn Database để chạy được trên Vercel (Read-only system)
+# Nếu chạy trên Vercel, database sẽ nằm ở thư mục /tmp tạm thời
+if os.environ.get('VERCEL'):
+    DATABASE = '/tmp/dictionary.db'
+else:
+    DATABASE = 'dictionary.db'
 
 
 def init_db():
@@ -99,12 +106,15 @@ class RadixTrie:
         return node.definition if node.is_end else None
 
 
-# Khởi tạo DB và nạp dữ liệu
+# Khởi tạo DB và nạp dữ liệu vào Tree khi khởi động app
 init_db()
 trie = RadixTrie()
-with sqlite3.connect(DATABASE) as conn:
-    for row in conn.execute('SELECT word, definition FROM vocab'):
-        trie.insert(row[0], row[1])
+try:
+    with sqlite3.connect(DATABASE) as conn:
+        for row in conn.execute('SELECT word, definition FROM vocab'):
+            trie.insert(row[0], row[1])
+except Exception as e:
+    print(f"Database loading error: {e}")
 
 
 @app.route('/')
@@ -116,17 +126,15 @@ def index():
 def action():
     data = request.json
     action_type = data.get('action')
-    word = data.get('word', '').lower().strip()  # Ép về chữ thường
+    word = data.get('word', '').lower().strip()
     definition = data.get('definition', '').strip()
 
-    # KIỂM TRA TỪ VỰNG CHỈ CHỨA KÝ TỰ TIẾNG ANH (A-Z)
+    # Kiểm tra tính hợp lệ của từ vựng
     if action_type in ['add', 'delete', 'search']:
         if not word:
             return jsonify({"error": "Vui lòng nhập từ vựng!"})
-        # re.match('^[a-z]+$') đảm bảo chuỗi chỉ có chữ cái từ a đến z, không số, không dấu cách, không ký tự đặc biệt
         if not re.match(r'^[a-z]+$', word):
-            return jsonify(
-                {"error": "Từ vựng chỉ được chứa chữ cái tiếng Anh (A-Z), không có dấu, số hay khoảng trắng!"})
+            return jsonify({"error": "Từ vựng chỉ được chứa chữ cái tiếng Anh (a-z)!"})
 
     if action_type == 'add':
         if not definition:
@@ -136,77 +144,38 @@ def action():
         if existing_def:
             existing_meanings = [d.strip() for d in existing_def.split(';')]
             if definition in existing_meanings:
-                return jsonify({"error": f"Nghĩa '{definition}' đã tồn tại cho từ này!"})
-
+                return jsonify({"error": f"Nghĩa '{definition}' đã tồn tại!"})
             new_definition = existing_def + " ; " + definition
-            trie.insert(word, new_definition)
-            with sqlite3.connect(DATABASE) as conn:
-                conn.execute('INSERT OR REPLACE INTO vocab VALUES (?, ?)', (word, new_definition))
         else:
-            trie.insert(word, definition)
-            with sqlite3.connect(DATABASE) as conn:
-                conn.execute('INSERT OR REPLACE INTO vocab VALUES (?, ?)', (word, definition))
+            new_definition = definition
 
-
-
+        trie.insert(word, new_definition)
+        with sqlite3.connect(DATABASE) as conn:
+            conn.execute('INSERT OR REPLACE INTO vocab VALUES (?, ?)', (word, new_definition))
+        return jsonify({"success": f"Đã thêm từ '{word}'!", "tree": trie.root.to_dict()})
 
     elif action_type == 'delete':
-
-        if not word: return jsonify({"error": "Vui lòng nhập từ cần xóa!"})
-
         existing_def = trie.search(word)
-
         if not existing_def:
-            return jsonify({"error": "Không tìm thấy từ này để xóa!"})
-
-        # Lấy danh sách các nghĩa cần xóa (Giao diện gửi lên)
+            return jsonify({"error": "Không tìm thấy từ này!"})
 
         targets = data.get('definitions', [])
-
-        single_def = data.get('definition', '').strip()
-
-
-        if not targets and single_def:
-            targets = [single_def]
-
         if targets:
-
             meanings = [d.strip() for d in existing_def.split(';')]
-
-            # Xóa tất cả các nghĩa có trong danh sách chọn
-
             for t in targets:
-
-                if t in meanings:
-                    meanings.remove(t)
+                if t in meanings: meanings.remove(t)
 
             if len(meanings) > 0:
-
-                # Nếu vẫn còn nghĩa khác -> Cập nhật cây
-
-                new_definition = " ; ".join(meanings)
-
-                trie.insert(word, new_definition)
-
+                new_def = " ; ".join(meanings)
+                trie.insert(word, new_def)
                 with sqlite3.connect(DATABASE) as conn:
+                    conn.execute('INSERT OR REPLACE INTO vocab VALUES (?, ?)', (word, new_def))
+                return jsonify({"success": f"Đã xóa nghĩa của từ '{word}'!", "tree": trie.root.to_dict()})
 
-                    conn.execute('INSERT OR REPLACE INTO vocab VALUES (?, ?)', (word, new_definition))
-
-                return jsonify(
-                    {"success": f"Đã xóa {len(targets)} nghĩa của từ '{word}'!", "tree": trie.root.to_dict()})
-
-            else:
-
-                pass  # Nếu đã xóa hết nghĩa, chuyển xuống đoạn dưới để xóa luôn từ
-
-        # XÓA HOÀN TOÀN TỪ KHỎI CÂY VÀ DB
-
+        # Xóa hoàn toàn từ
         trie.delete(word)
-
         with sqlite3.connect(DATABASE) as conn:
-
             conn.execute('DELETE FROM vocab WHERE word = ?', (word,))
-
         return jsonify({"success": f"Đã xóa hoàn toàn từ '{word}'!", "tree": trie.root.to_dict()})
 
     elif action_type == 'search':
@@ -214,16 +183,19 @@ def action():
         return jsonify({"result": res or "Không tìm thấy từ này!"})
 
     elif action_type == 'get_all':
-        with sqlite3.connect(DATABASE) as conn:
-            cursor = conn.execute('SELECT word, definition FROM vocab ORDER BY word')
-            words = [{"word": row[0], "definition": row[1]} for row in cursor]
-        return jsonify({"words": words, "tree": trie.root.to_dict()})
+        try:
+            with sqlite3.connect(DATABASE) as conn:
+                cursor = conn.execute('SELECT word, definition FROM vocab ORDER BY word')
+                words = [{"word": row[0], "definition": row[1]} for row in cursor]
+            return jsonify({"words": words, "tree": trie.root.to_dict()})
+        except:
+            return jsonify({"words": [], "tree": trie.root.to_dict()})
 
     elif action_type == 'reset':
         trie.root = RadixNode()
         with sqlite3.connect(DATABASE) as conn:
             conn.execute('DELETE FROM vocab')
-        return jsonify({"success": "Đã làm mới toàn bộ dữ liệu!"})
+        return jsonify({"success": "Đã làm mới toàn bộ dữ liệu!", "tree": trie.root.to_dict()})
 
     return jsonify({"tree": trie.root.to_dict()})
 
